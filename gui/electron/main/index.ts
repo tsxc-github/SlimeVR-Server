@@ -68,13 +68,13 @@ let mainWindow: BrowserWindow | null = null;
 handleIpc(IPC_CHANNELS.GH_FETCH, async (e, options) => {
   if (options.type === 'fw-releases') {
     return fetch(
-      'https://api.github.com/repos/SlimeVR/SlimeVR-Tracker-ESP/releases'
+      'https://api.github.com/repos/tsxc-github/SlimeVR-Tracker-ESP/releases'
     ).then((res) => res.json());
   }
   if (options.type === 'asset') {
     if (
       !options.url.startsWith(
-        'https://github.com/SlimeVR/SlimeVR-Tracker-ESP/releases/download'
+        'https://github.com/tsxc-github/SlimeVR-Tracker-ESP/releases/download'
       )
     )
       return null;
