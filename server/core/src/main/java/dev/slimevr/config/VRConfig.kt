@@ -62,6 +62,8 @@ class VRConfig {
 
 	val vrcConfig: VRCConfig = VRCConfig()
 
+	val firmware: FirmwareConfig = FirmwareConfig()
+
 	init {
 		// Initialize default settings for OSC Router
 		oscRouter.portIn = 9002

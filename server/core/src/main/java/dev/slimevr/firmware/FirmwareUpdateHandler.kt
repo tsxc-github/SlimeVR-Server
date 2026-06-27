@@ -502,20 +502,29 @@ class FirmwareUpdateHandler(private val server: VRServer) :
 	}
 }
 
-fun downloadFirmware(url: String, expectedDigest: String): ByteArray {
+private fun downloadFirmware(url: String, expectedDigest: String): ByteArray {
+	val cfg = server.configManager.vrConfig.firmware
+	val actualUrl = if (cfg.enabled && cfg.firmwareUrl.isNotEmpty()) cfg.firmwareUrl else url
+	val actualDigest =
+		if (cfg.enabled && cfg.firmwareDigest.isNotEmpty()) cfg.firmwareDigest else expectedDigest
+
+	if (cfg.enabled && cfg.firmwareUrl.isNotEmpty()) {
+		LogManager.info("[FirmwareUpdateHandler] Custom firmware override: $actualUrl")
+	}
+
 	val outputStream = ByteArrayOutputStream()
 
 	val chunk = ByteArray(4096)
 	var bytesRead: Int
-	val stream: InputStream = URL(url).openStream()
+	val stream: InputStream = URL(actualUrl).openStream()
 	while (stream.read(chunk).also { bytesRead = it } > 0) {
 		outputStream.write(chunk, 0, bytesRead)
 	}
 
 	val downloadedData = outputStream.toByteArray()
 
-	if (!verifyChecksum(downloadedData, expectedDigest)) {
-		error("Checksum verification failed for $url")
+	if (actualDigest.isNotEmpty() && !verifyChecksum(downloadedData, actualDigest)) {
+		error("Checksum verification failed for $actualUrl")
 	}
 
 	return downloadedData
