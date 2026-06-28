@@ -313,11 +313,11 @@ class FirmwareUpdateHandler(private val server: VRServer) :
 			val firmwareParts = try {
 				withTimeoutOrNull(30_000) {
 					toDownloadParts.map {
-						val actualUrl =
-							if (firmwareCfg.enabled && firmwareCfg.firmwareUrl.isNotEmpty()) firmwareCfg.firmwareUrl else it.url
+						val useCustom = firmwareCfg.enabled && firmwareCfg.firmwareUrl.isNotEmpty()
+						val actualUrl = if (useCustom) firmwareCfg.firmwareUrl else it.url
 						val actualDigest =
-							if (firmwareCfg.enabled && firmwareCfg.firmwareDigest.isNotEmpty()) firmwareCfg.firmwareDigest else it.digest
-						if (firmwareCfg.enabled && firmwareCfg.firmwareUrl.isNotEmpty()) {
+							if (useCustom) firmwareCfg.firmwareDigest else it.digest
+						if (useCustom) {
 							LogManager.info("[FirmwareUpdateHandler] Custom firmware override: $actualUrl")
 						}
 						val firmware = downloadFirmware(actualUrl, actualDigest)
