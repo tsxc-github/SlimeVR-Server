@@ -309,10 +309,18 @@ class FirmwareUpdateHandler(private val server: VRServer) :
 
 		try {
 			val toDownloadParts = getFirmwareParts(request)
+			val firmwareCfg = server.configManager.vrConfig.firmware
 			val firmwareParts = try {
 				withTimeoutOrNull(30_000) {
 					toDownloadParts.map {
-						val firmware = downloadFirmware(it.url, it.digest)
+						val actualUrl =
+							if (firmwareCfg.enabled && firmwareCfg.firmwareUrl.isNotEmpty()) firmwareCfg.firmwareUrl else it.url
+						val actualDigest =
+							if (firmwareCfg.enabled && firmwareCfg.firmwareDigest.isNotEmpty()) firmwareCfg.firmwareDigest else it.digest
+						if (firmwareCfg.enabled && firmwareCfg.firmwareUrl.isNotEmpty()) {
+							LogManager.info("[FirmwareUpdateHandler] Custom firmware override: $actualUrl")
+						}
+						val firmware = downloadFirmware(actualUrl, actualDigest)
 						DownloadedFirmwarePart(
 							firmware,
 							it.offset,
@@ -500,34 +508,25 @@ class FirmwareUpdateHandler(private val server: VRServer) :
 		deviceHandle.second()
 		watchRestartQueue.remove(deviceHandle)
 	}
+}
 
-	private fun downloadFirmware(url: String, expectedDigest: String): ByteArray {
-		val cfg = server.configManager.vrConfig.firmware
-		val actualUrl = if (cfg.enabled && cfg.firmwareUrl.isNotEmpty()) cfg.firmwareUrl else url
-		val actualDigest =
-			if (cfg.enabled && cfg.firmwareDigest.isNotEmpty()) cfg.firmwareDigest else expectedDigest
+fun downloadFirmware(url: String, expectedDigest: String): ByteArray {
+	val outputStream = ByteArrayOutputStream()
 
-		if (cfg.enabled && cfg.firmwareUrl.isNotEmpty()) {
-			LogManager.info("[FirmwareUpdateHandler] Custom firmware override: $actualUrl")
-		}
-
-		val outputStream = ByteArrayOutputStream()
-
-		val chunk = ByteArray(4096)
-		var bytesRead: Int
-		val stream: InputStream = URL(actualUrl).openStream()
-		while (stream.read(chunk).also { bytesRead = it } > 0) {
-			outputStream.write(chunk, 0, bytesRead)
-		}
-
-		val downloadedData = outputStream.toByteArray()
-
-		if (actualDigest.isNotEmpty() && !verifyChecksum(downloadedData, actualDigest)) {
-			error("Checksum verification failed for $actualUrl")
-		}
-
-		return downloadedData
+	val chunk = ByteArray(4096)
+	var bytesRead: Int
+	val stream: InputStream = URL(url).openStream()
+	while (stream.read(chunk).also { bytesRead = it } > 0) {
+		outputStream.write(chunk, 0, bytesRead)
 	}
+
+	val downloadedData = outputStream.toByteArray()
+
+	if (expectedDigest.isNotEmpty() && !verifyChecksum(downloadedData, expectedDigest)) {
+		error("Checksum verification failed for $url")
+	}
+
+	return downloadedData
 }
 
 fun verifyChecksum(data: ByteArray, expectedDigest: String): Boolean {
