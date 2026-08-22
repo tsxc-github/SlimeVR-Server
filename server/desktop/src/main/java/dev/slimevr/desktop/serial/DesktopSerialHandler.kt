@@ -199,7 +199,7 @@ class DesktopSerialHandler :
 	@Synchronized
 	override fun setWifi(ssid: String, passwd: String) {
 		val os = currentPort?.outputStream ?: return
-		val writer = OutputStreamWriter(os)
+		val writer = OutputStreamWriter(os, StandardCharsets.UTF_8)
 		try {
 			writer.append("SET WIFI \"").append(ssid).append("\" \"").append(passwd).append("\"\n")
 			writer.flush()

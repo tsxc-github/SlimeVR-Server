@@ -224,7 +224,7 @@ class AndroidSerialHandler(val activity: AppCompatActivity) :
 	@Synchronized
 	private fun writeSerial(serialText: String, print: Boolean = false) {
 		try {
-			currentPort?.port?.write("${serialText}\n".toByteArray(), 0)
+			currentPort?.port?.write("${serialText}\n".toByteArray(StandardCharsets.UTF_8), 0)
 			if (print) {
 				addLog("-> $serialText\n")
 			}
