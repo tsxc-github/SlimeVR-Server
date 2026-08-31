@@ -21,19 +21,6 @@ export interface CrossStorage {
   save(): Promise<boolean>;
 }
 
-export type GHGet = { type: 'fw-releases' } | { type: 'asset'; url: string };
-export type GHReturn = {
-  asset: [number, string][] | null;
-  ['fw-releases']:
-    | {
-        assets: { browser_download_url: string; name: string; digest: string }[];
-        prerelease: boolean;
-        tag_name: string;
-        body: string;
-      }[]
-    | null;
-};
-
 export type DiscordPresence =
   | { enable: false }
   | { enable: true; activity: string; iconText: string | undefined };
@@ -56,7 +43,6 @@ export interface IElectronAPI {
   saveDialog: (options: SaveDialogOptions) => Promise<SaveDialogReturnValue>;
   log: (type: 'info' | 'error' | 'warn', ...args: unknown[]) => void;
   openFile: (path: string) => void;
-  ghGet: <T extends GHGet>(options: T) => Promise<GHReturn[T['type']]>;
   setPresence: (options: DiscordPresence) => void;
   getInstallDir: () => Promise<string>;
   isSteam: () => Promise<boolean>;

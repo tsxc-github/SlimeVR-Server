@@ -20,7 +20,7 @@ import { useOnboarding } from '@/hooks/onboarding';
 import { WarningBox } from '@/components/commons/TipBox';
 import { Button } from '@/components/commons/Button';
 import { useNavigate } from 'react-router-dom';
-import { firmwareToolS3BaseUrl } from '@/firmware-tool-api/firmwareToolFetcher';
+import { CUSTOM_FIRMWARE_URL } from '@/hooks/firmware-update';
 import { DeviceCardControl } from '@/components/firmware-tool/DeviceCard';
 
 export function FlashingStep({
@@ -34,8 +34,7 @@ export function FlashingStep({
 }) {
   const nav = useNavigate();
   const { l10n } = useLocalization();
-  const { selectedDevices, selectDevices, files, selectedDefault } =
-    useFirmwareTool();
+  const { selectedDevices, selectDevices } = useFirmwareTool();
   const { state: onboardingState } = useOnboarding();
   const { sendRPCPacket, useRPCPacket } = useWebsocketAPI();
   const [status, setStatus] = useState<{
@@ -57,16 +56,21 @@ export function FlashingStep({
 
   const queueFlashing = (selectedDevices: SelectedDevice[]) => {
     clear();
-    if (!files) throw new Error('invalid state - no firmware files');
-    if (!selectedDefault) throw new Error('invalid state - no slected default');
+    // The wizard only offers the user's own firmware: no firmware build
+    // step, the URL is the server-configured custom firmware.
     const requests = getFlashingRequests(
       selectedDevices,
-      files.map(({ filePath, ...fields }) => ({
-        filePath: `${firmwareToolS3BaseUrl}/${filePath}`,
-        ...fields,
-      })),
+      [
+        {
+          isFirmware: true,
+          firmwareId: '',
+          filePath: CUSTOM_FIRMWARE_URL,
+          digest: '',
+          offset: 0,
+        },
+      ],
       onboardingState,
-      selectedDefault
+      null
     );
 
     requests.forEach((req) => {

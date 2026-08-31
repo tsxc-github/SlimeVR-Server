@@ -325,7 +325,7 @@ function OTADevicesList({
 
 export function FlashingMethodStep({
   nextStep,
-  goTo,
+  prevStep,
   isActive,
 }: {
   nextStep: () => void;
@@ -334,7 +334,7 @@ export function FlashingMethodStep({
   isActive: boolean;
 }) {
   const { l10n } = useLocalization();
-  const { selectedDevices, selectedDefault } = useFirmwareTool();
+  const { selectedDevices } = useFirmwareTool();
 
   const {
     control,
@@ -437,16 +437,7 @@ export function FlashingMethodStep({
           </div>
           <div className="flex justify-between">
             <Localized id="firmware_tool-previous_step">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  if (selectedDefault?.flashingRules.shouldOnlyUseDefaults) {
-                    goTo('SelectSource');
-                  } else {
-                    goTo('Defaults');
-                  }
-                }}
-              />
+              <Button variant="secondary" onClick={() => prevStep()} />
             </Localized>
             <Localized id="firmware_tool-next_step">
               <Button

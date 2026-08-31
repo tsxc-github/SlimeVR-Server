@@ -344,7 +344,7 @@ export function FirmwareUpdate() {
             <Localized id="firmware_update-devices">
               <Typography variant="section-title" />
             </Localized>
-            <Localized id="firmware_update-devices-description">
+            <Localized id="firmware_update-devices-description-custom">
               <Typography variant="standard" />
             </Localized>
             <div className="flex flex-col gap-4 overflow-y-auto xs:max-h-[530px]">
@@ -384,7 +384,12 @@ export function FirmwareUpdate() {
           <div className="h-fit w-full flex flex-col gap-2">
             <Localized
               id="firmware_update-changelog-title"
-              vars={{ version: currentFirmwareRelease?.name ?? 'unknown' }}
+              vars={{
+                version:
+                  currentFirmwareRelease?.name === 'custom'
+                    ? l10n.getString('firmware_update-custom_version')
+                    : (currentFirmwareRelease?.name ?? 'unknown'),
+              }}
             >
               <Typography variant="main-title" />
             </Localized>

@@ -62,15 +62,18 @@ export function useProvideAppContext(): AppContext {
   });
 
   useEffect(() => {
-    if (!config) return;
+    // The firmware update page only offers the user's own firmware. The target
+    // version is read from version.txt; poll it so new releases are noticed
+    // while the app stays open.
+    const loadFirmwareRelease = () =>
+      fetchCurrentFirmwareRelease().then(setCurrentFirmwareRelease);
 
-    const interval = setInterval(() => {
-      fetchCurrentFirmwareRelease(config.uuid).then(setCurrentFirmwareRelease);
-    }, 1000);
+    loadFirmwareRelease();
+    const interval = setInterval(loadFirmwareRelease, 60_000);
     return () => {
       clearInterval(interval);
     };
-  }, [config?.uuid]);
+  }, []);
 
   useLayoutEffect(() => {
     changeLocales([config?.lang || DEFAULT_LOCALE]);

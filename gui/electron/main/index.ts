@@ -65,23 +65,6 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow: BrowserWindow | null = null;
 
-handleIpc(IPC_CHANNELS.GH_FETCH, async (e, options) => {
-  if (options.type === 'fw-releases') {
-    return fetch(
-      'https://api.github.com/repos/tsxc-github/SlimeVR-Tracker-ESP/releases'
-    ).then((res) => res.json());
-  }
-  if (options.type === 'asset') {
-    if (
-      !options.url.startsWith(
-        'https://github.com/tsxc-github/SlimeVR-Tracker-ESP/releases/download'
-      )
-    )
-      return null;
-    return fetch(options.url).then((res) => res.json());
-  }
-});
-
 handleIpc(IPC_CHANNELS.OS_STATS, async () => {
   return {
     type: getPlatform(),

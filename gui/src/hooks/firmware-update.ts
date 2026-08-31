@@ -1,7 +1,4 @@
 import { BoardType, DeviceDataT } from 'solarxr-protocol';
-import { cacheWrap } from './cache';
-import semver from 'semver';
-import { normalizedHash } from './crypto';
 
 export interface FirmwareRelease {
   name: string;
@@ -11,115 +8,110 @@ export interface FirmwareRelease {
   userCanUpdate: boolean;
 }
 
-const firstAsset = (assets: any[], name: string) =>
-  assets.find((asset: any) => asset.name === name && asset.browser_download_url);
+/**
+ * URL of the custom firmware. This mirrors the server-side override in
+ * `server/core/src/main/java/dev/slimevr/config/FirmwareConfig.kt`: whenever
+ * that override is enabled the server ignores the URL sent by the GUI and
+ * downloads the firmware from the configured URL instead, so this value is
+ * mostly used to build the flash request payload. Keep the two in sync.
+ */
+export const CUSTOM_FIRMWARE_URL = 'https://slimevr.tsxc.xyz/firmware.bin';
 
-const todaysRange = (deployData: [number, Date][]): number => {
-  let maxRange = 0;
-  for (const [range, date] of deployData) {
-    if (Date.now() >= date.getTime()) maxRange = range;
-  }
-  return maxRange;
-};
+/**
+ * The firmware version is a build timestamp. It is published next to the
+ * firmware as `version.txt` (e.g. `20260830154259` for YYYYMMDDHHMMSS). The
+ * tracker reports its installed version as `YYMMDDHHMMSS` (12 digits) or
+ * `YYYYMMDDHHMMSS` (14 digits); both are accepted when comparing.
+ */
+export const CUSTOM_FIRMWARE_VERSION_URL = 'https://slimevr.tsxc.xyz/version.txt';
 
-const checkUserCanUpdate = async (uuid: string, url: string, fwVersion: string) => {
-  const deployDataJson = JSON.parse(
-    (await cacheWrap(
-      `firmware-${fwVersion}-deploy`,
-      async () =>
-        JSON.stringify(
-          await window.electronAPI.ghGet({ type: 'asset', url }).catch(() => null)
-        ),
-      60 * 60 * 1000
-    )) || 'null'
-  );
-  if (!deployDataJson) return false;
+const ALL_BOARD_TYPES = Object.values(BoardType).filter(
+  (value): value is BoardType => typeof value === 'number'
+);
 
-  const deployData = (
-    Object.entries(deployDataJson).map(([key, val]) => {
-      return [parseFloat(key), new Date(val as string)];
-    }) as [number, Date][]
-  ).sort(([a], [b]) => a - b);
+/**
+ * Parse a firmware timestamp into epoch millis. Accepts both `YYMMDDHHMMSS`
+ * (12 digits, e.g. `260830154259`) and `YYYYMMDDHHMMSS` (14 digits, e.g.
+ * `20260830154259`). Returns null when the value is not a valid timestamp.
+ */
+export function parseFirmwareTimestamp(value: string): number | null {
+  const match = /^(\d{12}|\d{14})$/.exec(value.trim());
+  if (!match) return null;
 
-  if (deployData.find(([key]) => key > 1 || key <= 0)) return false; // values outside boundaries / cancel
+  const raw = match[1];
+  const year =
+    raw.length === 14 ? Number(raw.slice(0, 4)) : 2000 + Number(raw.slice(0, 2));
+  const rest = raw.slice(raw.length - 10); // MM DD HH MM SS
+  const mo = Number(rest.slice(0, 2));
+  const dd = Number(rest.slice(2, 4));
+  const hh = Number(rest.slice(4, 6));
+  const mi = Number(rest.slice(6, 8));
+  const ss = Number(rest.slice(8, 10));
 
+  const date = new Date(year, mo - 1, dd, hh, mi, ss);
   if (
-    deployData.find(
-      ([, date], index) =>
-        index > 0 && date.getTime() < deployData[index - 1][1].getTime()
-    )
-  )
-    return false; // Dates in the wrong order / cancel
-
-  const todayUpdateRange = todaysRange(deployData);
-  if (!todayUpdateRange) return false;
-
-  // Make it so the hash change every version. Prevent the same user from getting the same delay
-  return normalizedHash(`${uuid}-${fwVersion}`) <= todayUpdateRange;
-};
-
-export async function fetchCurrentFirmwareRelease(
-  uuid: string
-): Promise<FirmwareRelease | null> {
-  if (!window.electronAPI) return null;
-
-  const releases: any[] | null = JSON.parse(
-    (await cacheWrap(
-      'firmware-releases',
-      async () =>
-        JSON.stringify(
-          await window.electronAPI.ghGet({ type: 'fw-releases' }).catch(() => null)
-        ),
-      60 * 60 * 1000
-    )) || 'null'
-  );
-  if (!releases) return null;
-
-  const processedReleses = [];
-  for (const release of releases) {
-    const fwAsset = firstAsset(release.assets, 'BOARD_SLIMEVR-firmware.bin');
-    const fw12Asset = firstAsset(release.assets, 'BOARD_SLIMEVR_V1_2-firmware.bin');
-    const deployAsset = firstAsset(release.assets, 'deploy.json');
-    if (
-      !release.assets ||
-      !deployAsset ||
-      (!fwAsset && !fw12Asset) ||
-      release.prerelease
-    )
-      continue;
-
-    let version = release.tag_name;
-    if (version.charAt(0) === 'v') {
-      version = version.substring(1);
-    }
-
-    const userCanUpdate = await checkUserCanUpdate(
-      uuid,
-      deployAsset.browser_download_url,
-      version
-    );
-    processedReleses.push({
-      name: release.name,
-      version,
-      changelog: release.body,
-      firmwareFiles: {
-        [BoardType.SLIMEVR]: {
-          url: fwAsset.browser_download_url,
-          digest: fwAsset.digest,
-        },
-        [BoardType.SLIMEVR_V1_2]: {
-          url: fw12Asset.browser_download_url,
-          digest: fw12Asset.digest,
-        },
-      },
-      userCanUpdate,
-    });
-
-    if (userCanUpdate) break; // Stop early if we found one valid update. No need to download more
+    date.getFullYear() !== year ||
+    date.getMonth() !== mo - 1 ||
+    date.getDate() !== dd ||
+    date.getHours() !== hh ||
+    date.getMinutes() !== mi ||
+    date.getSeconds() !== ss
+  ) {
+    return null;
   }
+  return date.getTime();
+}
+
+function formatFirmwareTimestamp(timestamp: number): string {
+  const date = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, '0');
   return (
-    processedReleses.find(({ userCanUpdate }) => userCanUpdate) ?? processedReleses[0]
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    ` ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
   );
+}
+
+/**
+ * Fetch the target firmware version from `version.txt`. Returns null when the
+ * file is unreachable or does not contain a valid timestamp (no update is
+ * announced in that case).
+ */
+async function fetchTargetFirmwareTimestamp(): Promise<{
+  raw: string;
+  timestamp: number;
+} | null> {
+  try {
+    const response = await fetch(CUSTOM_FIRMWARE_VERSION_URL, {
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    const raw = (await response.text()).trim();
+    const timestamp = parseFirmwareTimestamp(raw);
+    return timestamp == null ? null : { raw, timestamp };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The firmware update page only offers the user's own firmware. The target
+ * version comes from `version.txt`; when it can't be determined no update is
+ * announced.
+ */
+export async function fetchCurrentFirmwareRelease(): Promise<FirmwareRelease | null> {
+  const target = await fetchTargetFirmwareTimestamp();
+
+  const firmwareFiles = Object.fromEntries(
+    ALL_BOARD_TYPES.map((board) => [board, { url: CUSTOM_FIRMWARE_URL, digest: '' }])
+  ) as Partial<Record<BoardType, { url: string; digest: string }>>;
+
+  return {
+    name: target != null ? formatFirmwareTimestamp(target.timestamp) : 'custom',
+    version: target != null ? target.raw : 'custom',
+    changelog: CUSTOM_FIRMWARE_URL,
+    firmwareFiles,
+    userCanUpdate: true,
+  };
 }
 
 export function checkForUpdate(
@@ -128,29 +120,9 @@ export function checkForUpdate(
 ): 'can-update' | 'low-battery' | 'updated' | 'unavailable' | 'blocked' {
   if (!currentFirmwareRelease.userCanUpdate) return 'blocked';
 
-  if (
-    !device.hardwareInfo?.officialBoardType ||
-    !semver.valid(currentFirmwareRelease.version) ||
-    !semver.valid(device.hardwareInfo.firmwareVersion?.toString() ?? 'none')
-  ) {
-    return 'unavailable';
-  }
-
-  const canUpdate = semver.lt(
-    device.hardwareInfo.firmwareVersion?.toString() ?? 'none',
-    currentFirmwareRelease.version
-  );
+  if (!device.hardwareInfo?.officialBoardType) return 'unavailable';
 
   if (
-    ![BoardType.SLIMEVR, BoardType.SLIMEVR_V1_2].includes(
-      device.hardwareInfo.officialBoardType
-    )
-  ) {
-    return canUpdate ? 'unavailable' : 'updated';
-  }
-
-  if (
-    canUpdate &&
     device.hardwareStatus?.batteryPctEstimate != null &&
     (device.hardwareStatus.batteryPctEstimate < 50 ||
       device.hardwareStatus.batteryPctEstimate > 200)
@@ -158,5 +130,16 @@ export function checkForUpdate(
     return 'low-battery';
   }
 
-  return canUpdate ? 'can-update' : 'updated';
+  const targetTimestamp = parseFirmwareTimestamp(currentFirmwareRelease.version);
+  // No known target version (version.txt missing/invalid): don't announce
+  if (targetTimestamp == null) return 'updated';
+
+  const deviceTimestamp = parseFirmwareTimestamp(
+    device.hardwareInfo.firmwareVersion?.toString() ?? ''
+  );
+  // The device firmware doesn't report a timestamp version (e.g. HID trackers
+  // report major.minor.patch): can't tell, don't announce
+  if (deviceTimestamp == null) return 'updated';
+
+  return deviceTimestamp < targetTimestamp ? 'can-update' : 'updated';
 }
