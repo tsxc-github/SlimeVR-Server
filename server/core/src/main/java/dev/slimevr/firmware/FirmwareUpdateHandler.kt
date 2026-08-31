@@ -27,6 +27,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.stream.Collectors
 import kotlin.concurrent.scheduleAtFixedRate
 
+/** Custom firmware URL, hardcoded (no config field anymore). */
+private const val CUSTOM_FIRMWARE_URL = "https://slimevr.tsxc.xyz/firmware.bin"
+
 data class DownloadedFirmwarePart(
 	val firmware: ByteArray,
 	val offset: Long?,
@@ -344,8 +347,8 @@ class FirmwareUpdateHandler(private val server: VRServer) :
 			val firmwareParts = try {
 				withTimeoutOrNull(30_000) {
 					toDownloadParts.map {
-						val useCustom = firmwareCfg.enabled && firmwareCfg.firmwareUrl.isNotEmpty()
-						val actualUrl = if (useCustom) firmwareCfg.firmwareUrl else it.url
+						val useCustom = firmwareCfg.enabled
+						val actualUrl = if (useCustom) CUSTOM_FIRMWARE_URL else it.url
 						val actualDigest =
 							if (useCustom) firmwareCfg.firmwareDigest else it.digest
 						if (useCustom) {
