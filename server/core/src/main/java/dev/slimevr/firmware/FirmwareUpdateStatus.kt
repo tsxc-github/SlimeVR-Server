@@ -17,9 +17,10 @@ enum class FirmwareUpdateStatus(val id: Int) {
 	ERROR_PROVISIONING_FAILED(solarxr_protocol.rpc.FirmwareUpdateStatus.ERROR_PROVISIONING_FAILED),
 	ERROR_UNSUPPORTED_METHOD(solarxr_protocol.rpc.FirmwareUpdateStatus.ERROR_UNSUPPORTED_METHOD),
 	ERROR_UNKNOWN(solarxr_protocol.rpc.FirmwareUpdateStatus.ERROR_UNKNOWN),
+	ERROR_NOT_ENOUGH_SPACE(solarxr_protocol.rpc.FirmwareUpdateStatus.ERROR_NOT_ENOUGH_SPACE),
 	;
 
-	fun isError(): Boolean = id in ERROR_DEVICE_NOT_FOUND.id..ERROR_UNKNOWN.id
+	fun isError(): Boolean = id in ERROR_DEVICE_NOT_FOUND.id..ERROR_NOT_ENOUGH_SPACE.id
 
 	companion object {
 		fun getById(id: Int): FirmwareUpdateStatus? = byId[id]

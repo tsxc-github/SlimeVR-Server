@@ -27,6 +27,7 @@ class OTAUpdateTask(
 	var uploadSocket: Socket? = null
 	var authSocket: DatagramSocket? = null
 	var canceled: Boolean = false
+	private var lastDeviceError: String? = null
 
 	@Throws(NoSuchAlgorithmException::class)
 	private fun bytesToMd5(bytes: ByteArray): String {
@@ -65,7 +66,11 @@ class OTAUpdateTask(
 
 				// The expected auth payload should look like "AUTH AUTH_TOKEN"
 				// if we have less than those two args it means that we are in an invalid state
-				if (args.size != 2 || args[0] != "AUTH") return false
+				if (args.size != 2 || args[0] != "AUTH") {
+					LogManager.severe("[OTAUpdate] Unexpected response to OTA invitation: '$data'")
+					lastDeviceError = data
+					return false
+				}
 
 				LogManager.info("[OTAUpdate] Authenticating...")
 
@@ -92,7 +97,13 @@ class OTAUpdateTask(
 
 				val authResponse = String(authResponsePacket.data, 0, authResponsePacket.length)
 
-				return authResponse == "OK"
+				if (authResponse != "OK") {
+					LogManager.severe("[OTAUpdate] Device rejected OTA authentication, response: '$authResponse'")
+					lastDeviceError = authResponse
+					return false
+				}
+
+				return true
 			}
 		} catch (e: Exception) {
 			LogManager.severe("OTA Authentication exception", e)
@@ -148,12 +159,30 @@ class OTAUpdateTask(
 			val responseBytes = dis.readBytes()
 			val response = String(responseBytes)
 
-			return response.contains("OK")
+			val ok = response.contains("OK")
+			if (!ok) lastDeviceError = response
+			return ok
 		} catch (e: Exception) {
 			LogManager.severe("Unable to upload the firmware using ota", e)
 			return false
 		} finally {
 			connection?.close()
+		}
+	}
+
+	/**
+	 * Maps a raw error response received from the device to a more specific
+	 * update status when it can be recognized, falling back to [defaultStatus].
+	 */
+	private fun deviceErrorStatusOrDefault(defaultStatus: FirmwareUpdateStatus): FirmwareUpdateStatus {
+		val deviceError = lastDeviceError ?: return defaultStatus
+		return when {
+			// The ESP Update library's UPDATE_ERROR_SPACE (4): the firmware does
+			// not fit in the remaining OTA space of the tracker
+			deviceError.contains("Not Enough Space", ignoreCase = true) || deviceError.contains("ERROR[4]") ->
+				FirmwareUpdateStatus.ERROR_NOT_ENOUGH_SPACE
+
+			else -> defaultStatus
 		}
 	}
 
@@ -164,7 +193,7 @@ class OTAUpdateTask(
 				statusCallback.accept(
 					UpdateStatusEvent(
 						deviceId,
-						FirmwareUpdateStatus.ERROR_AUTHENTICATION_FAILED,
+						deviceErrorStatusOrDefault(FirmwareUpdateStatus.ERROR_AUTHENTICATION_FAILED),
 					),
 				)
 				return
@@ -174,7 +203,7 @@ class OTAUpdateTask(
 				statusCallback.accept(
 					UpdateStatusEvent(
 						deviceId,
-						FirmwareUpdateStatus.ERROR_UPLOAD_FAILED,
+						deviceErrorStatusOrDefault(FirmwareUpdateStatus.ERROR_UPLOAD_FAILED),
 					),
 				)
 				return

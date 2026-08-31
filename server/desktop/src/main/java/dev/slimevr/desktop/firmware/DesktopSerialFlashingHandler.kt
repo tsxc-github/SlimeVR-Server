@@ -18,6 +18,10 @@ class DesktopSerialFlashingHandler : SerialFlashingHandler {
 		if (comPort.isOpen) {
 			comPort.closePort()
 		}
+		// Keep DTR/RTS deasserted while opening: asserting them on open can hold
+		// some boards in reset or force them back into download mode
+		comPort.clearDTR()
+		comPort.clearRTS()
 		if (!comPort.openPort(1000)) {
 			error("unable to open port")
 		}

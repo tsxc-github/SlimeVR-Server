@@ -1,6 +1,7 @@
 package dev.slimevr.serial;
 
 import dev.slimevr.VRServer;
+import dev.slimevr.tracking.trackers.udp.UDPDevice;
 import io.eiren.util.logging.LogManager;
 import kotlin.text.Regex;
 import org.jetbrains.annotations.NotNull;
@@ -22,6 +23,8 @@ public class ProvisioningHandler implements SerialListener {
 	private String password;
 
 	private String preferredPort;
+
+	private String provisionedMac;
 
 	private final Timer provisioningTickTimer = new Timer("ProvisioningTickTimer");
 	private long lastStatusChange = -1;
@@ -50,6 +53,7 @@ public class ProvisioningHandler implements SerialListener {
 		this.ssid = ssid;
 		this.password = password;
 		this.preferredPort = port;
+		this.provisionedMac = null;
 		this.provisioningStatus = ProvisioningStatus.NONE;
 		this.connectRetries = 0;
 	}
@@ -97,6 +101,34 @@ public class ProvisioningHandler implements SerialListener {
 
 
 	public void provisioningTick() {
+		// Some firmwares never print the expected serial line on handshake
+		// success, so also treat the tracker actually connecting over UDP as
+		// provisioning done. Match on the provisioned MAC with a freshness
+		// check, as timed-out devices stay registered in the device manager.
+		if (
+			this.provisionedMac != null
+				&& (this.provisioningStatus == ProvisioningStatus.CONNECTING
+					|| this.provisioningStatus == ProvisioningStatus.LOOKING_FOR_SERVER)
+		) {
+			long now = System.currentTimeMillis();
+			boolean udpConnected = vrServer.deviceManager
+				.getDevices()
+				.stream()
+				.anyMatch(
+					(device) -> {
+						if (!(device instanceof UDPDevice udp))
+							return false;
+						return this.provisionedMac.equalsIgnoreCase(udp.getHardwareIdentifier())
+							&& !udp.timedOut
+							&& now - udp.lastPacket < 2_000;
+					}
+				);
+			if (udpConnected) {
+				this.changeStatus(ProvisioningStatus.DONE);
+				return;
+			}
+		}
+
 		if (this.provisioningStatus == ProvisioningStatus.OBTAINING_MAC_ADDRESS)
 			this.tryObtainMacAddress();
 
@@ -177,6 +209,7 @@ public class ProvisioningHandler implements SerialListener {
 				if (b != null) {
 					vrServer.configManager.getVrConfig().addKnownDevice(b.getValue());
 					vrServer.configManager.saveConfig();
+					this.provisionedMac = b.getValue();
 					this.tryProvisioning();
 				}
 			}

@@ -113,6 +113,30 @@ class FirmwareUpdateHandler(private val server: VRServer) :
 		task.run()
 	}
 
+	@Suppress("SameParameterValue")
+	private fun triggerPostFlashReset(
+		flashingHandler: SerialFlashingHandler,
+		port: dev.slimevr.serial.SerialPort,
+	) {
+		try {
+			flashingHandler.openSerial(port)
+			// esptool-style hard reset into run mode: keep IO0 released (DTR
+			// deasserted) and pulse EN (RTS) so the chip reboots normally
+			flashingHandler.setDTR(false)
+			flashingHandler.setRTS(true)
+			Thread.sleep(100)
+			flashingHandler.setRTS(false)
+			Thread.sleep(100)
+			flashingHandler.setDTR(false)
+			flashingHandler.closeSerial()
+			LogManager.info("[FirmwareUpdateHandler] Triggered post-flash reset on the tracker")
+		} catch (e: Exception) {
+			LogManager.warning(
+				"[FirmwareUpdateHandler] Post-flash reset failed: ${e.message ?: e}",
+			)
+		}
+	}
+
 	private fun startSerialUpdate(
 		firmwares: Array<DownloadedFirmwarePart>,
 		deviceId: UpdateDeviceId<String>,
@@ -175,6 +199,13 @@ class FirmwareUpdateHandler(private val server: VRServer) :
 				),
 			)
 			flasher.flash(serialPort)
+
+			// After a successful flash the tracker may still be sitting in
+			// download mode (or held by line states). Trigger a run-mode reset
+			// (EN pulse with IO0 released) so the newly flashed firmware boots
+			// before WiFi provisioning starts.
+			triggerPostFlashReset(flashingHandler, serialPort)
+
 			if (needManualReboot) {
 				if (watchRestartQueue.find { it.first == deviceId } != null) {
 					LogManager.info("[FirmwareUpdateHandler] Device is already updating, skipping")
